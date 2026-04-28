@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { users } from '../db/schema';
+import { users, sessions } from '../db/schema';
 import { eq, or } from 'drizzle-orm';
 
 export const registerUser = async (payload: any) => {
@@ -32,4 +32,36 @@ export const registerUser = async (payload: any) => {
   });
 
   return { success: true };
+};
+
+export const loginUser = async (payload: any) => {
+  const { email, password } = payload;
+
+  if (!email || !password) {
+    throw new Error('Email and password are required');
+  }
+
+  // Find user by email
+  const user = await db.query.users.findFirst({
+    where: eq(users.email, email),
+  });
+
+  if (!user) {
+    throw new Error('Invalid email or password');
+  }
+
+  // Verify password
+  const isPasswordValid = await Bun.password.verify(password, user.password);
+  if (!isPasswordValid) {
+    throw new Error('Invalid email or password');
+  }
+
+  return user;
+};
+
+export const createSession = async (userId: number, token: string) => {
+  await db.insert(sessions).values({
+    userId,
+    token,
+  });
 };
