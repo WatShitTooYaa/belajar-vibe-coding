@@ -1,5 +1,5 @@
 import { Elysia, t } from 'elysia';
-import { registerUser } from '../services/user-service';
+import { registerUser, loginUser, createSession } from '../services/user-service';
 
 export const userRoutes = new Elysia({ prefix: '/api/auth' })
   .post('/register', async ({ body, set }) => {
@@ -15,5 +15,28 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
       email: t.String({ format: 'email' }),
       username: t.String({ minLength: 3 }),
       password: t.String({ minLength: 6 })
+    })
+  })
+  .post('/login', async ({ body, set, jwt }) => {
+    try {
+      const user = await loginUser(body);
+      
+      // Generate JWT Token
+      const token = await (jwt as any).sign({
+        sub: user.id.toString(),
+      });
+
+      // Save Session
+      await createSession(user.id, token);
+
+      return { data: token };
+    } catch (error: any) {
+      set.status = 401;
+      return { error: error.message };
+    }
+  }, {
+    body: t.Object({
+      email: t.String({ format: 'email' }),
+      password: t.String()
     })
   });
