@@ -65,3 +65,22 @@ export const createSession = async (userId: number, token: string) => {
     token,
   });
 };
+
+export const getCurrentUser = async (token: string) => {
+  const result = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(sessions.userId, users.id))
+    .where(eq(sessions.token, token))
+    .limit(1);
+
+  if (result.length === 0) {
+    throw new Error('Unauthorized');
+  }
+
+  return result[0];
+};

@@ -1,83 +1,71 @@
-# Feature: User Login API & Session Management
+# Feature: Get Current Logged In User API
 
 ## Deskripsi
-Tugas ini bertujuan untuk mengimplementasikan fitur otentikasi (login) pengguna. Fitur ini mencakup pembuatan tabel `sessions` untuk melacak status login, implementasi JSON Web Token (JWT), dan pembuatan API endpoint login menggunakan Elysia JS dan Drizzle ORM.
+Tugas ini bertujuan untuk mengimplementasikan fitur pengambilan profil pengguna yang sedang *login* (sering disebut fitur "Me"). Fitur ini membutuhkan mekanisme otorisasi yang membaca token JWT dari header request, memvalidasinya, dan memeriksa kecocokannya dengan data sesi yang tersimpan di database.
 
-## 1. Skema Database
-Buat tabel baru bernama `sessions` di dalam file `src/db/schema.ts` dengan spesifikasi kolom berikut:
-- `id`: integer, auto increment (primary key)
-- `user_id`: integer, not null (foreign key yang merujuk ke id di tabel `users`)
-- `token`: varchar, not null, unique (akan menyimpan string JWT Token dari user yang sedang login)
-- `created_at`: timestamp, default `now()`
-- `updated_at`: timestamp, default `now()`
+## 1. Spesifikasi API Endpoint
+Buat endpoint baru untuk memproses permintaan pengambilan profil pengguna.
 
-## 2. Spesifikasi API Endpoint
-Buat endpoint baru untuk memproses login pengguna.
-
-- **Endpoint**: `POST /api/auth/login`
-- **Request Body** (JSON):
+- **Endpoint**: `GET /api/auth/me`
+- **Headers**:
   ```json
   {
-      "email": "email@example.com",
-      "password": "password123"
+      "Authorization": "Bearer <token_jwt>"
+  }
+  ```
+  *(Catatan: Token yang dikirim harus merupakan token valid yang tersimpan di tabel `sessions` yang berelasi dengan tabel `users`)*
+
+- **Response Sukses** (HTTP 200):
+  ```json
+  {
+      "data": {
+          "id": 1,
+          "username": "nama_user",
+          "email": "email@example.com"
+      }
   }
   ```
 
-- **Response Sukses**:
+- **Response Error** (HTTP 401 Unauthorized):
   ```json
   {
-      "data": "eyJhbGciOiJIUzI1NiIsInR..." // JWT Token
+      "error": "Unauthorized"
   }
   ```
 
-- **Response Error**:
-  ```json
-  {
-      "error": "pesan error yang spesifik (contoh: 'Email atau password salah')"
-  }
-  ```
-
-## 3. Struktur Folder dan Penamaan File
-Lanjutkan penggunaan arsitektur standar yang telah ada di dalam folder `src`:
-- **`src/routes/`**: Tempat untuk file routing Elysia. Anda dapat menambahkan ke `user-routes.ts` atau membuat file otentikasi baru.
-- **`src/services/`**: Tempat untuk file *business logic*. Anda dapat menambahkan ke `user-service.ts` atau membuat file otentikasi baru.
+## 2. Struktur Folder dan Penamaan File
+Tetap gunakan arsitektur *clean code* yang sudah berjalan:
+- **`src/routes/`**: Tambahkan routing baru di dalam file `user-routes.ts`.
+- **`src/services/`**: Tambahkan logika verifikasi dan *query* ke database di dalam file `user-service.ts`.
 
 ---
 
-## 4. Tahapan Implementasi
+## 3. Tahapan Implementasi
 
-Berikut adalah panduan *high-level* untuk menyelesaikan fitur login ini:
+Berikut adalah langkah-langkah *high-level* yang perlu dieksekusi:
 
-### Langkah 1: Update Skema Database
-- Buka file `src/db/schema.ts`.
-- Tambahkan deklarasi tabel `sessions` beserta relasi *foreign key*-nya ke tabel `users`.
-- Jangan lupa untuk mengekspor tabel `sessions` tersebut.
-- Jalankan perintah *generate* pada Drizzle Kit untuk membuat file migrasi baru (misal: `bunx drizzle-kit generate`).
-- Terapkan migrasi tersebut ke database MySQL.
+### Langkah 1: Buat Service (Logika Bisnis)
+- Buka file `src/services/user-service.ts`.
+- Buat fungsi baru, misalnya `getCurrentUser`, yang menerima argumen `token` (string JWT asli tanpa awalan "Bearer ").
+- **Verifikasi Session DB**: Gunakan Drizzle ORM untuk melakukan *query* ke tabel `sessions` dengan kondisi `token` yang dikirimkan.
+- Jika data sesi tidak ditemukan, segera *throw error* (misal dengan pesan "Unauthorized").
+- **Ambil Profil User**: Berdasarkan `user_id` yang didapat dari tabel `sessions`, lakukan *query* ke tabel `users` untuk mengambil detail profil (`id`, `username`, `email`). Anda juga dapat langsung menggunakan operasi *Join* (misalnya `innerJoin`) di Drizzle agar pengambilan data sesi dan user terjadi dalam satu eksekusi *query*.
+- Pastikan Anda **tidak** mengikutsertakan kolom sensitif seperti `password` ke dalam hasil kembalian fungsi ini.
 
-### Langkah 2: Setup Mekanisme JWT
-- Tentukan library/plugin JWT yang akan digunakan (karena menggunakan Elysia, sangat disarankan menggunakan plugin `@elysiajs/jwt`).
-- Pastikan dependensi sudah ter-install dan terkonfigurasi dengan mengambil secret key dari file environment (`.env`).
-
-### Langkah 3: Buat Service (Logika Bisnis)
-- Buka file `src/services/user-service.ts` (atau file service terkait auth).
-- Buat fungsi baru bernama `loginUser` yang menerima argumen `email` dan `password`.
-- **Validasi User**: Lakukan *query* ke tabel `users` menggunakan Drizzle untuk mencari user berdasarkan `email`. Jika tidak ditemukan, *throw error* (misal: "Kredensial tidak valid").
-- **Validasi Password**: Gunakan fungsi *verify* dari `Bun.password` (atau library *bcrypt* yang dipakai) untuk membandingkan plain-text `password` dari input dengan *hashed password* milik user di database. Jika tidak cocok, *throw error*.
-- **Pembuatan Token**: Generate JWT token (payload bisa berisi `user_id` atau sekadar penanda sesi).
-- **Penyimpanan Session**: Lakukan *insert* record baru ke tabel `sessions` menggunakan Drizzle. Simpan `user_id` yang sesuai dan `token` JWT yang baru saja di-generate.
-- Fungsi harus mengembalikan token JWT tersebut.
-
-### Langkah 4: Buat Route (API Endpoint)
+### Langkah 2: Buat Route (API Endpoint)
 - Buka file `src/routes/user-routes.ts`.
-- Tambahkan route handler baru untuk method `POST /login` (bergabung menjadi `/api/auth/login`).
-- Ekstrak `email` dan `password` dari body request dan aplikasikan validasi body jika menggunakan skema T (TypeBox) dari Elysia.
-- Panggil service `loginUser` di dalam blok `try-catch`.
-- **Handling Success**: Jika berhasil, format return menjadi `{ "data": "token_hasil_generate" }`.
-- **Handling Error**: Jika terjadi exception (misal kredensial salah), atur HTTP status menjadi `401 Unauthorized` atau `400 Bad Request` dan kembalikan `{ "error": "pesan error dari exception" }`.
+- Tambahkan handler untuk `GET /me` (akan menjadi `/api/auth/me` jika mengikuti prefix yang ada).
+- Di dalam handler, ekstrak nilai dari header `Authorization`. Biasanya dapat diakses melalui object `headers.authorization`.
+- Pastikan header memiliki format `Bearer <token>`. Jika format salah atau header tidak ada, lemparkan pesan error "Unauthorized".
+- Ambil string `<token>`-nya saja (pisahkan/hapus kata "Bearer ").
+- *Opsional tapi direkomendasikan*: Gunakan metode `jwt.verify(token)` dari plugin `@elysiajs/jwt` untuk memastikan integritas kriptografis token sebelum menyentuh database.
+- Panggil fungsi `getCurrentUser(token)` dari service yang telah dibuat di dalam blok `try-catch`.
+- **Handling Success**: Jika berhasil, kembalikan response dengan format `{ "data": { ...profil_user... } }`.
+- **Handling Error**: Jika terjadi exception apa pun (token tidak sah, kadaluarsa, tidak ada di DB), tangkap error tersebut, ubah status HTTP menjadi `401`, lalu kembalikan response `{ "error": "Unauthorized" }`.
 
-### Langkah 5: Pengujian
-- Jalankan *development server*.
-- Pastikan Anda sudah mendaftarkan sebuah user melalui endpoint `/api/auth/register` sebelumnya.
-- Kirimkan HTTP POST request ke `/api/auth/login` dengan kredensial user tersebut.
-- Pastikan server merespons dengan JSON yang berisi token, dan token tersebut berhasil masuk ke tabel `sessions` di database MySQL.
+### Langkah 3: Pengujian (Testing)
+- Pastikan server berjalan tanpa error.
+- Lakukan login terlebih dahulu via `POST /api/auth/login` dan catat token yang diberikan.
+- Kirim HTTP GET request ke `http://localhost:3000/api/auth/me` menggunakan *tool* seperti Postman, Insomnia, atau `curl`, dengan memastikan header `Authorization` terisi token tersebut.
+- Pastikan response mengembalikan informasi `id`, `username`, dan `email` Anda.
+- Uji juga skenario kegagalan: request tanpa header, request dengan token acak, atau request dengan token yang sudah di-*tamper* (diubah), dan pastikan aplikasi merespons dengan `401 Unauthorized`.
