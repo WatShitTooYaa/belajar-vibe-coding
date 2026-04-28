@@ -1,7 +1,14 @@
 import { Elysia, t } from 'elysia';
+import { jwt } from '@elysiajs/jwt';
 import { registerUser, loginUser, createSession } from '../services/user-service';
 
 export const userRoutes = new Elysia({ prefix: '/api/auth' })
+  .use(
+    jwt({
+      name: 'jwt',
+      secret: process.env.JWT_SECRET || 'secret',
+    })
+  )
   .post('/register', async ({ body, set }) => {
     try {
       await registerUser(body);
@@ -22,7 +29,7 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
       const user = await loginUser(body);
       
       // Generate JWT Token
-      const token = await (jwt as any).sign({
+      const token = await jwt.sign({
         sub: user.id.toString(),
       });
 
