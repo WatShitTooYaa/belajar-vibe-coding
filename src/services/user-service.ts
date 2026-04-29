@@ -84,3 +84,7 @@ export const getCurrentUser = async (token: string) => {
 
   return result[0];
 };
+
+export const logoutUser = async (token: string) => {
+  return await db.delete(sessions).where(eq(sessions.token, token));
+};
