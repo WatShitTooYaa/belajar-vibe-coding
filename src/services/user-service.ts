@@ -1,90 +1,101 @@
+
 import { db } from '../db';
-import { users, sessions } from '../db/schema';
-import { eq, or } from 'drizzle-orm';
+import { users, refreshTokens } from '../db/schema';
+import { eq } from 'drizzle-orm';
+interface RegisterPayload {
+    email: string;
+    username: string;
+    password: string;
+}
 
-export const registerUser = async (payload: any) => {
-  const { email, username, password } = payload;
+interface LoginPayload {
+    email: string;
+    password: string;
+}
 
-  if (!email || !username || !password) {
-    throw new Error('Missing required fields');
-  }
 
-  // Check if email or username already exists
-  const existingUser = await db.query.users.findFirst({
-    where: or(eq(users.email, email), eq(users.username, username)),
-  });
+export const registerUser = async (payload: RegisterPayload) => {
+    const { email, username, password } = payload;
 
-  if (existingUser) {
-    throw new Error('Email or username already exists');
-  }
+    const existingUser = await db.query.users.findFirst({
+        where: (u, { or, eq }) =>
+            or(eq(u.email, email), eq(u.username, username)),
+    });
 
-  // Hash password using Bun's built-in hashing
-  const hashedPassword = await Bun.password.hash(password, {
-    algorithm: 'bcrypt',
-    cost: 10,
-  });
+    if (existingUser) {
+        throw new Error('Email or username already exists');
+    }
 
-  // Insert user
-  await db.insert(users).values({
-    email,
-    username,
-    password: hashedPassword,
-  });
+    const hashedPassword = await Bun.password.hash(password, {
+        algorithm: 'bcrypt',
+        cost: 10,
+    });
 
-  return { success: true };
+    await db.insert(users).values({
+        email,
+        username,
+        password: hashedPassword,
+    });
+
+    return { success: true };
 };
 
-export const loginUser = async (payload: any) => {
-  const { email, password } = payload;
+export const loginUser = async (payload: LoginPayload) => {
+    const user = await db.query.users.findFirst({
+        where: eq(users.email, payload.email),
+    });
 
-  if (!email || !password) {
-    throw new Error('Email and password are required');
-  }
+    if (!user) throw new Error('Invalid email or password');
 
-  // Find user by email
-  const user = await db.query.users.findFirst({
-    where: eq(users.email, email),
-  });
+    const valid = await Bun.password.verify(payload.password, user.password);
+    if (!valid) throw new Error('Invalid email or password');
 
-  if (!user) {
-    throw new Error('Invalid email or password');
-  }
-
-  // Verify password
-  const isPasswordValid = await Bun.password.verify(password, user.password);
-  if (!isPasswordValid) {
-    throw new Error('Invalid email or password');
-  }
-
-  return user;
+    return {
+        id: user.id,
+        email: user.email,
+    };
 };
 
-export const createSession = async (userId: number, token: string) => {
-  await db.insert(sessions).values({
-    userId,
-    token,
-  });
+export const createRefreshToken = async (userId: number, token: string) => {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 hari
+
+    await db.insert(refreshTokens).values({
+        userId,
+        token,
+        expiresAt,
+    });
 };
 
-export const getCurrentUser = async (token: string) => {
-  const result = await db
-    .select({
-      id: users.id,
-      username: users.username,
-      email: users.email,
-    })
-    .from(sessions)
-    .innerJoin(users, eq(sessions.userId, users.id))
-    .where(eq(sessions.token, token))
-    .limit(1);
+export const findRefreshToken = async (token: string) => {
+    const result = await db.query.refreshTokens.findFirst({
+        where: eq(refreshTokens.token, token),
+    });
 
-  if (result.length === 0) {
-    throw new Error('Unauthorized');
-  }
+    if (!result) return null;
 
-  return result[0];
+    if (new Date(result.expiresAt) < new Date()) {
+        return null;
+    }
+
+    return result;
 };
 
-export const logoutUser = async (token: string) => {
-  return await db.delete(sessions).where(eq(sessions.token, token));
+export const deleteRefreshToken = async (token: string) => {
+    await db.delete(refreshTokens).where(eq(refreshTokens.token, token));
+};
+
+export const getCurrentUser = async (userId: number) => {
+    const user = await db.query.users.findFirst({
+        where: eq(users.id, userId),
+        columns: {
+            id: true,
+            email: true,
+            username: true,
+        },
+    });
+
+    if (!user) throw new Error('Unauthorized');
+
+    return user;
 };
