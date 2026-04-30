@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { userRoutes } from './routes/user-routes';
+import { tasksRoutes } from './routes/tasks-routes';
 
 export const app = new Elysia()
   .use(
@@ -10,7 +11,8 @@ export const app = new Elysia()
     })
   )
   .get('/', () => 'Server is running!')
-  .use(userRoutes);
+  .use(userRoutes)
+  .use(tasksRoutes);
 
 if (import.meta.main) {
   app.listen(3000);
