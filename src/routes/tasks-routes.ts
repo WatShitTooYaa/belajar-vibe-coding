@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
-import { getTasksByUserId, createTask } from '../services/tasks-service';
+import { getTasksByUserId, createTask, getTaskById, updateTask, deleteTask } from '../services/tasks-service';
 
 export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
     .use(
@@ -51,6 +51,50 @@ export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
                 title: t.String(),
                 isCompleted: t.Boolean(),
                 deadline: t.String()
+            })
+        })
+        .get('/:id', async ({ params: { id }, userId, set }) => {
+            try {
+                const data = await getTaskById(id, userId);
+                return { data };
+            } catch (error: any) {
+                set.status = error.message === 'Task not found' ? 404 : 500;
+                return { error: error.message };
+            }
+        }, {
+            params: t.Object({
+                id: t.Numeric()
+            })
+        })
+        .patch('/:id', async ({ params: { id }, body, userId, set }) => {
+            try {
+                await updateTask(id, userId, body);
+                return { data: 'ok' };
+            } catch (error: any) {
+                set.status = error.message.includes('not found') ? 404 : 500;
+                return { error: error.message };
+            }
+        }, {
+            params: t.Object({
+                id: t.Numeric()
+            }),
+            body: t.Object({
+                title: t.Optional(t.String()),
+                isCompleted: t.Optional(t.Boolean()),
+                deadline: t.Optional(t.String())
+            })
+        })
+        .delete('/:id', async ({ params: { id }, userId, set }) => {
+            try {
+                await deleteTask(id, userId);
+                return { data: 'ok' };
+            } catch (error: any) {
+                set.status = error.message.includes('not found') ? 404 : 500;
+                return { error: error.message };
+            }
+        }, {
+            params: t.Object({
+                id: t.Numeric()
             })
         })
     );
