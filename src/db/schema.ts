@@ -9,13 +9,6 @@ export const users = mysqlTable('users', {
     updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
 });
 
-// export const sessions = mysqlTable('sessions', {
-//   id: serial('id').primaryKey(),
-//   userId: bigint('user_id', { mode: 'number', unsigned: true }).notNull().references(() => users.id),
-//   token: varchar('token', { length: 512 }).notNull().unique(),
-//   createdAt: timestamp('created_at').defaultNow(),
-//   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
-// });
 
 export const refreshTokens = mysqlTable('refresh_tokens', {
     id: serial('id').primaryKey(),

@@ -1,12 +1,14 @@
-import { Elysia, t } from 'elysia';
+import { Elysia, NotFoundError, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { getTasksByUserId, createTask, getTaskById, updateTask, deleteTask } from '../services/tasks-service';
 
+const secret = process.env.JWT_SECRET;
+if (!secret) throw new Error('JWT_SECRET is not set');
 export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
     .use(
         jwt({
             name: 'jwt',
-            secret: process.env.JWT_SECRET || 'secret',
+            secret: secret,
         })
     )
     .guard({}, (app) => app
@@ -34,8 +36,12 @@ export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
                 const data = await getTasksByUserId(userId);
                 return { data };
             } catch (error: any) {
+                if (error.name === 'NotFoundError') {
+                    set.status = 404;
+                    return { error: error.message };
+                }
                 set.status = 500;
-                return { error: error.message };
+                return { error: "Internal Server Error" };
             }
         })
         .post('/', async ({ body, userId, set }) => {
@@ -50,7 +56,7 @@ export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
             body: t.Object({
                 title: t.String(),
                 isCompleted: t.Boolean(),
-                deadline: t.String()
+                deadline: t.String({ format: 'date-time' })
             })
         })
         .get('/:id', async ({ params: { id }, userId, set }) => {
@@ -58,8 +64,12 @@ export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
                 const data = await getTaskById(id, userId);
                 return { data };
             } catch (error: any) {
-                set.status = error.message === 'Task not found' ? 404 : 500;
-                return { error: error.message };
+                if (error.name === 'NotFoundError') {
+                    set.status = 404;
+                    return { error: error.message };
+                }
+                set.status = 500;
+                return { error: "Internal Server Error" };
             }
         }, {
             params: t.Object({
@@ -68,11 +78,18 @@ export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
         })
         .patch('/:id', async ({ params: { id }, body, userId, set }) => {
             try {
+                if (Object.keys(body).length === 0) {
+                    throw new Error('No fields to update');
+                }
                 await updateTask(id, userId, body);
                 return { data: 'ok' };
             } catch (error: any) {
-                set.status = error.message.includes('not found') ? 404 : 500;
-                return { error: error.message };
+                if (error instanceof NotFoundError || error.name === 'NotFoundError') {
+                    set.status = 404;
+                    return { error: error.message };
+                }
+                set.status = 500;
+                return { error: "Internal Server Error" };
             }
         }, {
             params: t.Object({
@@ -81,7 +98,7 @@ export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
             body: t.Object({
                 title: t.Optional(t.String()),
                 isCompleted: t.Optional(t.Boolean()),
-                deadline: t.Optional(t.String())
+                deadline: t.Optional(t.String({ format: 'date-time' }))
             })
         })
         .delete('/:id', async ({ params: { id }, userId, set }) => {
@@ -89,8 +106,12 @@ export const tasksRoutes = new Elysia({ prefix: '/api/v1/tasks' })
                 await deleteTask(id, userId);
                 return { data: 'ok' };
             } catch (error: any) {
-                set.status = error.message.includes('not found') ? 404 : 500;
-                return { error: error.message };
+                if (error instanceof NotFoundError || error.name === 'NotFoundError') {
+                    set.status = 404;
+                    return { error: error.message };
+                }
+                set.status = 500;
+                return { error: "Internal Server Error" };
             }
         }, {
             params: t.Object({
