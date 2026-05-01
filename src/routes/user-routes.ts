@@ -85,7 +85,8 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
         cookie.access_token?.set({
             value: accessToken,
             httpOnly: true,
-            maxAge: 900,
+            maxAge: 60 * 15,
+            secure: process.env.NODE_ENV === 'production',
             path: '/',
             sameSite: 'strict'
         });
