@@ -56,19 +56,18 @@ export const updateTask = async (id: number, userId: number, payload: UpdateTask
         data.deadline = dateObj;
     }
 
-    // const [header] = await db.update(tasks)
-    //     .set(data)
-    //     .where(and(eq(tasks.id, id), eq(tasks.userId, userId))) as [ResultSetHeader, any];
     const result = await db.update(tasks)
         .set(data)
-        .where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+        .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+        .returning();
 
-    if (result[0].affectedRows === 0) throw new NotFoundError('Task not found or unauthorized');
+    if (result.length === 0) throw new NotFoundError('Task not found or unauthorized');
 };
 
 export const deleteTask = async (id: number, userId: number) => {
     const result = await db.delete(tasks)
-        .where(and(eq(tasks.id, id), eq(tasks.userId, userId)));
+        .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+        .returning();
 
-    if (result[0].affectedRows === 0) throw new NotFoundError('Task not found or unauthorized');
+    if (result.length === 0) throw new NotFoundError('Task not found or unauthorized');
 };

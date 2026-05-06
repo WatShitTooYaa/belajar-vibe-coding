@@ -1,10 +1,12 @@
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { jwt } from '@elysiajs/jwt';
+import { Logixlysia } from 'logixlysia';
 import { userRoutes } from './routes/user-routes';
 import { tasksRoutes } from './routes/tasks-routes';
 
 export const app = new Elysia()
+  .use(new Logixlysia().init())
   .use(cors())
   .use(
     jwt({
@@ -12,6 +14,9 @@ export const app = new Elysia()
       secret: process.env.JWT_SECRET || 'secret',
     })
   )
+  .onError(({ code, error }) => {
+    console.error(`[Error] ${code}: ${error.message}`);
+  })
   .get('/', () => 'Server is running!')
   .use(userRoutes)
   .use(tasksRoutes);
