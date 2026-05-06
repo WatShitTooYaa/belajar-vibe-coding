@@ -51,7 +51,7 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
                 sameSite: 'strict'
             });
 
-            return { data: 'ok' };
+            return { data: { user } };
         } catch (error: any) {
             set.status = error.message === 'Invalid email or password' ? 401 : 500;
             return { error: error.message };
@@ -91,7 +91,8 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
             sameSite: 'strict'
         });
 
-        return { data: 'ok' };
+        const currentUser = await getCurrentUser(refreshTokenDB.userId);
+        return { data: { user: currentUser } };
     })
     // Logout diletakkan di luar guard agar tetap bisa logout meski access_token expired
     .delete('/logout', async ({ cookie }) => {
