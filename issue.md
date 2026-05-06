@@ -2,11 +2,12 @@
 
 ## Tugas Baru (Untuk Junior Backend Developer)
 
-### 1. Refactor Respons Auth (Login & Refresh)
-*   **Konteks**: Saat ini, frontend membuat objek user "dummy" saat login karena endpoint `/api/auth/login` dan `/api/auth/refresh` hanya mengembalikan `{ data: 'ok' }`. Ketika frontend memuat ulang halaman (*refresh page*) dengan *refresh token*, sistem gagal membuat objek *dummy* sehingga menganggap pengguna belum login (mengembalikan `null`).
+
+### 1. Tambahkan Logging untuk Mempermudah Debugging
+*   **Konteks**: Saat ini aplikasi belum memiliki sistem logging yang terstruktur. Hal ini menyulitkan proses pencarian akar masalah (debugging) ketika terjadi error, terutama pada endpoint krusial seperti authentikasi.
 *   **Target Perbaikan**:
-    *   Buka file `src/routes/user-routes.ts`.
-    *   Pada route `POST /login`, modifikasi nilai *return* agar tidak lagi mengembalikan `{ data: 'ok' }`, melainkan mengembalikan data profil pengguna (gunakan data `user` yang sudah di-*query* dari database). Contoh: `return { data: { user } }`.
-    *   Pada route `POST /refresh`, setelah proses pengecekan berhasil dan token baru di-*generate*, gunakan `refreshTokenDB.userId` untuk memanggil fungsi `getCurrentUser(refreshTokenDB.userId)`. Lalu kembalikan data user tersebut sebagai respons, misalnya: `return { data: { user: currentUser } }`.
-*   **Tujuan**: Memastikan frontend menerima data profil asli (bukan sekadar status 'ok') setiap kali login dan perpanjangan sesi terjadi, sehingga komponen UI dapat menampilkan data yang akurat dan mencegah pengguna ter-logout secara tiba-tiba.
-*   **Status**: Closed
+    *   Buka file `src/index.ts` dan/atau buat middleware/plugin logging baru.
+    *   Implementasikan logging untuk mencatat setiap HTTP request yang masuk (method, path) dan response (status code, waktu eksekusi). Bisa menggunakan `@elysiajs/logger` jika tersedia atau buat custom logger sederhana di level global.
+    *   Pastikan juga error (stack trace atau pesan error) dicatat di terminal/console saat terjadi eksepsi (exception) di dalam aplikasi.
+*   **Tujuan**: Membantu developer memantau aktivitas server (traffic) dan melacak (trace) error dengan cepat melalui log yang informatif dan terstruktur di console/terminal.
+*   **Status**: Open
