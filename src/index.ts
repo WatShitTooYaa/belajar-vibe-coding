@@ -3,22 +3,41 @@ import { cors } from '@elysiajs/cors';
 import { jwt } from '@elysiajs/jwt';
 import { userRoutes } from './routes/user-routes';
 import { tasksRoutes } from './routes/tasks-routes';
+import logixlysia from 'logixlysia';
 
 export const app = new Elysia()
-  .use(cors())
-  .use(
-    jwt({
-      name: 'jwt',
-      secret: process.env.JWT_SECRET || 'secret',
+    .use(logixlysia({
+        config: {
+            service: 'api-server',
+            showStartupMessage: true,
+            startupMessageFormat: 'banner',
+            showContextTree: true,
+            contextDepth: 2,
+            slowThreshold: 500,
+            verySlowThreshold: 1000,
+            timestamp: {
+                translateTime: 'yyyy-mm-dd HH:MM:ss.SSS'
+            },
+            ip: true
+        }
+    }))
+    .use(cors())
+    .use(
+        jwt({
+            name: 'jwt',
+            secret: process.env.JWT_SECRET || 'secret',
+        })
+    )
+    .onError(({ code, error }) => {
+        console.error(`[Error] ${code}: ${error}`);
     })
-  )
-  .get('/', () => 'Server is running!')
-  .use(userRoutes)
-  .use(tasksRoutes);
+    .get('/', () => 'Server is running!')
+    .use(userRoutes)
+    .use(tasksRoutes);
 
 if (import.meta.main) {
-  app.listen(3000);
-  console.log(
-    `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
-  );
+    app.listen(3000);
+    console.log(
+        `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
+    );
 }
