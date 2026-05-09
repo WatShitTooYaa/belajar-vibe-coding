@@ -13,13 +13,14 @@ interface UpdateTaskPayload extends Partial<CreateTaskPayload> { }
 type UpdateTaskData = Partial<typeof tasks.$inferInsert>;
 
 
-export const getTasksByUserId = async (userId: number, limit = 10, offset = 0) => {
+export const getTasksByWorkspaceId = async (workspaceId: number, limit = 10, offset = 0) => {
     return await db.query.tasks.findMany({
-        where: eq(tasks.userId, userId),
+        where: eq(tasks.workspaceId, workspaceId),
         limit,
         offset
     });
 };
+
 
 export const createTask = async (payload: CreateTaskPayload, userId: number) => {
     const dateObj = new Date(payload.deadline);
