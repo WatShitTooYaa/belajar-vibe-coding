@@ -1,103 +1,67 @@
-# [Feature Request]: Implement Workspaces API and Database Schema
+# [Refactor]: Migrate Tasks to Workspace-based Ownership
 
 ## Deskripsi Tugas
-Sebagai bagian dari pengembangan fitur kolaborasi, kita perlu menambahkan entitas `Workspace` ke dalam sistem. Fitur ini memungkinkan pembuatan workspace dan pengelolaan anggotanya (workspace members). 
+Melanjutkan implementasi fitur Workspace pada Issue sebelumnya, kita perlu melakukan refaktorisasi pada logika dan routing Task. Saat ini, Task masih dikonsepkan sebagai entitas yang terikat langsung pada User secara personal (`userId`). Kita harus mengubahnya agar Task terikat pada Workspace (`workspaceId`), sesuai dengan perubahan schema database terbaru.
 
-Dokumen ini berisi instruksi spesifik untuk mengimplementasikan schema database dan endpoint dasar pembuatan workspace.
+## 1. Refaktor Service (`src/services/tasks-service.ts`)
 
-## 1. Perubahan Schema Database (Drizzle ORM)
+Karena struktur database tabel `tasks` telah berubah (menghapus `userId` dan menggantinya dengan `workspaceId`), kita harus memperbarui semua fungsi yang ada di dalam service.
 
-Tambahkan schema berikut di file konfigurasi database (misal: `src/db/schema.ts` atau file schema terkait):
+### A. Fungsi yang perlu diubah:
+1. **`getTasksByWorkspaceId`**: (Anda mungkin sudah memulai ini). Pastikan fungsi ini menerima argumen `workspaceId: number` dan melakukan query menggunakan kondisi `eq(tasks.workspaceId, workspaceId)`.
+2. **`createTask`**:
+   - Ubah parameter menjadi: `createTask(payload: CreateTaskPayload, workspaceId: number)`
+   - Pada saat `db.insert`, ubah payload dengan memasukkan `workspaceId` (bukan `userId` lagi).
+3. **`getTaskById`**:
+   - Ubah parameter menjadi: `getTaskById(id: number, workspaceId: number)`
+   - Ubah query pencarian: `where: and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId))`
+4. **`updateTask` & `deleteTask`**:
+   - Sama seperti di atas, ganti parameter `userId` menjadi `workspaceId`.
+   - Perbarui kondisi `where` di dalam kueri `update` dan `delete` Drizzle.
 
-### A. Tabel `workspaces`
-Buat tabel `workspaces` dengan spesifikasi berikut:
-- `id`: Primary key (UUID atau Serial, sesuaikan dengan standar project)
-- `name`: varchar(50), NOT NULL
-- `created_by`: varchar(50), NOT NULL (Menyimpan ID user pembuat)
-- `created_at`: timestamp, default: waktu saat ini
+## 2. Refaktor Routing (`src/routes/tasks-routes.ts`)
 
-### B. Tabel `workspace_members` (Many-to-Many)
-Buat tabel pivot `workspace_members` dengan spesifikasi berikut:
-- `workspace_id`: Foreign Key ke tabel `workspaces`
-- `user_id`: Foreign Key ke tabel `users`
-- `role`: varchar atau enum (Contoh: 'owner', 'admin', 'member', 'viewer')
-- **Primary Key**: Kombinasi (composite key) dari `workspace_id` dan `user_id`.
+Routing untuk Task tidak lagi diakses langsung secara global (misal: `/api/v1/tasks`), melainkan harus berjalan di dalam konteks sebuah Workspace, contoh URL yang diharapkan: `/api/v1/workspaces/:workspaceId/tasks`.
 
-**Instruksi Tambahan DB:**
-- Pastikan untuk men-generate file migration (misal: `bun run db:generate`) dan menjalankan migrasi ke database (misal: `bun run db:migrate`) setelah mengubah schema.
+### A. Perubahan Path & Parameter:
+- Pastikan setiap endpoint HTTP (`GET /`, `POST /`, `GET /:id`, `PATCH /:id`, `DELETE /:id`) dikonfigurasi untuk menangkap URL parameter `workspaceId`.
+- Anda bisa me-mount (menggabungkan) Elysia instance dari `tasksRoutes` ke dalam `workspacesRoutes` untuk mencapai struktur URL nested ini.
 
-## 2. Struktur File & Folder
-Gunakan standar struktur file dan folder berikut di dalam direktori `src/`:
-- `src/routes/workspaces-routes.ts` (Untuk definisi routing endpoint Elysia)
-- `src/services/workspaces-service.ts` (Untuk logika bisnis dan query database)
+### B. Otorisasi Member (Sangat Penting!):
+Sebelum endpoint mengeksekusi aksi Task apapun (melihat, membuat, menghapus), sistem **wajib** memvalidasi apakah user yang sedang login memiliki hak akses ke workspace tersebut.
 
-## 3. Implementasi API Endpoint
+## 3. Tahapan Implementasi (Step-by-Step)
 
-### Endpoint: Create Workspace
-- **Method:** `POST`
-- **Path:** `/api/workspaces`
-- **Authentication:** Endpoint ini **HARUS** diproteksi dengan JWT middleware. Pastikan hanya user yang sudah login yang bisa mengaksesnya.
+Anggap ini sebagai checklist kerjamu:
 
-**Request Body:**
-```json
-{
-  "name": "nama_workspace"
+### Langkah 1: Buat Pengecekan Otorisasi Member
+Di file `src/services/workspaces-service.ts`, tambahkan satu fungsi baru untuk memeriksa keanggotaan:
+```typescript
+export const checkWorkspaceMember = async (workspaceId: number, userId: number) => {
+    // 1. Query ke tabel `workspaceMembers`
+    // 2. Cari data yang cocok dengan workspaceId dan userId
+    // 3. Return true jika ada (member), atau false jika tidak ada.
 }
 ```
 
-**Response Success (Status 200/201):**
-```json
-{
-   "data": "ok"
-}
-```
+### Langkah 2: Update Logika Bisnis Task
+Buka `src/services/tasks-service.ts`:
+- Sapu bersih semua variabel dan argumen bernama `userId` di fungsi-fungsi tersebut dan ganti menjadi `workspaceId`.
+- Pastikan tidak ada syntax error dari Drizzle ORM setelah refaktor.
 
-**Response Error (Status 400/500):**
-```json
-{
-   "error": "pesan error detail"
-}
-```
+### Langkah 3: Update Routing Task
+Buka `src/routes/tasks-routes.ts`:
+1. Ubah konfigurasi `t.Object` untuk `params` agar menerima `workspaceId: t.Numeric()`.
+2. Di dalam handler tiap endpoint (misal `post('/')`), lakukan hal berikut secara berurutan:
+   - Ambil `userId` dari token JWT.
+   - Ambil `workspaceId` dari params.
+   - Panggil fungsi `checkWorkspaceMember(workspaceId, userId)`.
+   - Jika hasilnya *false*, langsung `set.status = 403` dan kembalikan pesan "Forbidden: Anda bukan member workspace ini".
+   - Jika *true*, lanjutkan memanggil fungsi service task terkait (misal: `createTask(body, workspaceId)`).
 
-## 4. Tahapan Implementasi (Step-by-Step)
-
-Untuk mempermudah pekerjaanmu, ikuti urutan pengerjaan berikut dengan saksama:
-
-### Langkah 1: Update Schema Database
-1. Buka file schema Drizzle (misal di `src/db/schema.ts`).
-2. Deklarasikan tabel `workspaces` dan `workspace_members` sesuai spesifikasi di atas.
-3. Jangan lupa mengatur relasi antar tabel (Foreign Keys) jika menggunakan Drizzle Relations.
-4. Jalankan command migrasi untuk mengaplikasikan tabel baru ke PostgreSQL.
-
-### Langkah 2: Buat Service (Logika Bisnis)
-1. Buat file baru: `src/services/workspaces-service.ts`.
-2. Buat fungsi asynchronous `createWorkspace(name: string, userId: string)`.
-3. Di dalam fungsi ini, jalankan proses insert ke database. Sangat disarankan menggunakan **Database Transaction** agar data konsisten:
-   - Insert data baru ke tabel `workspaces` dengan `name` dari input dan `created_by` = `userId`. Ambil `id` workspace yang baru di-insert.
-   - Insert data baru ke tabel `workspace_members` menggunakan `workspace_id` yang baru didapat, `user_id` = `userId`, dan set default `role` = `'owner'`.
-4. Return boolean/string "ok" jika berhasil, atau throw error jika gagal.
-
-### Langkah 3: Buat Route (Elysia Endpoint)
-1. Buat file baru: `src/routes/workspaces-routes.ts`.
-2. Import instance Elysia, setup JWT middleware (agar mendapat akses ke `cookie.access_token` atau header otorisasi), dan import fungsi dari service.
-3. Definisikan route `POST /` (nanti prefixnya diset sebagai `/api/workspaces` di instance).
-4. Gunakan `guard` atau mekanisme otentikasi Elysia untuk memastikan user membawa token yang valid, lalu ekstrak ID user (sebagai `userId`) dari token tersebut.
-5. Gunakan `t.Object` dari Elysia (TypeBox) untuk memvalidasi `body.name` (wajib berupa string, min length dll).
-6. Panggil fungsi `createWorkspace(body.name, userId)` dari service.
-7. Format balikan sesuai spesifikasi (`{"data": "ok"}` atau `{"error": ...}`).
-
-### Langkah 4: Registrasi Route di Main App
-1. Buka file utama `src/index.ts`.
-2. Import `workspacesRoutes` yang baru dibuat.
-3. Registrasikan ke instance Elysia utama, misalnya: `.use(workspacesRoutes)`.
-
-### Langkah 5: Pengujian (Testing)
-1. Jalankan lokal server (misal: `bun run dev`).
-2. Gunakan Postman/Insomnia/Bruno:
-   - Hit endpoint login terlebih dahulu untuk mendapatkan JWT Token.
-   - Hit `POST /api/workspaces` dengan mengirimkan Bearer token / Cookie yang tepat beserta body json `{"name": "My Workspace"}`.
-3. Pastikan response API sesuai dan cek di database apakah data tersimpan di kedua tabel (`workspaces` & `workspace_members`).
+### Langkah 4: Registrasi Nested Route (Opsional namun Disarankan)
+Untuk membuat struktur URL menjadi `/api/v1/workspaces/:workspaceId/tasks`, pertimbangkan untuk me-register (menggunakan `.use()`) routing `tasksRoutes` di dalam file `workspaces-routes.ts`, lalu hapus registrasi independennya dari `index.ts`.
 
 ---
 **Catatan Senior:**
-Jika kamu menghadapi kendala saat mendefinisikan *Composite Primary Key* di Drizzle ORM, periksa dokumentasi resminya di bagian Indexes & Constraints. Tetap semangat dan selalu pastikan kodenya rapi dan type-safe!
+Perhatikan baik-baik *Langkah 3b*. Jangan pernah membiarkan fungsi Task berjalan tanpa mengecek apakah user tersebut berhak mengakses Workspace itu. Keamanan data pengguna adalah prioritas! Baca dokumentasi Drizzle ORM jika ada error tipe data saat refaktor `where`. Semangat!

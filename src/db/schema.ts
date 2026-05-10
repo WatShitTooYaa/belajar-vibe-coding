@@ -20,6 +20,7 @@ export const refreshTokens = pgTable('refresh_tokens', {
 export const tasks = pgTable('tasks', {
     id: serial('id').primaryKey(),
     workspaceId: integer('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }).notNull(),
+    createdBy: integer('created_by').notNull().references(() => users.id),
     title: varchar('title', { length: 255 }).notNull(),
     isCompleted: boolean('is_completed').notNull().default(false),
     deadline: timestamp('deadline').notNull(),

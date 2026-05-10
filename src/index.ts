@@ -2,8 +2,8 @@ import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { jwt } from '@elysiajs/jwt';
 import { userRoutes } from './routes/user-routes';
-import { tasksRoutes } from './routes/tasks-routes';
 import { workspacesRoutes } from './routes/workspaces-routes';
+import { tasksRoutes } from './routes/tasks-routes';
 import logixlysia from 'logixlysia';
 
 export const app = new Elysia()
@@ -34,8 +34,8 @@ export const app = new Elysia()
     })
     .get('/', () => 'Server is running!')
     .use(userRoutes)
-    .use(tasksRoutes)
-    .use(workspacesRoutes);
+    .use(workspacesRoutes)
+    .use(tasksRoutes);
 
 if (import.meta.main) {
     app.listen(3000);
