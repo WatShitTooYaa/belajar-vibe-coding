@@ -20,8 +20,8 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
     }, {
         body: t.Object({
             email: t.String({ format: 'email' }),
-            username: t.String({ minLength: 3 }),
-            password: t.String({ minLength: 6 })
+            username: t.String({ minLength: 8, maxLength: 255 }),
+            password: t.String({ minLength: 8, maxLength: 255 })
         })
     })
     .post('/login', async ({ cookie, body, set, jwt }) => {

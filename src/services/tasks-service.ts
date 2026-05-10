@@ -13,37 +13,46 @@ interface UpdateTaskPayload extends Partial<CreateTaskPayload> { }
 type UpdateTaskData = Partial<typeof tasks.$inferInsert>;
 
 
-export const getTasksByUserId = async (userId: number, limit = 10, offset = 0) => {
+export const getTasksByWorkspaceId = async (workspaceId: number, limit = 10, offset = 0) => {
     return await db.query.tasks.findMany({
-        where: eq(tasks.userId, userId),
+        where: eq(tasks.workspaceId, workspaceId),
         limit,
         offset
     });
 };
 
-export const createTask = async (payload: CreateTaskPayload, userId: number) => {
+// export const getTasksByUserId = async (userId: number, limit = 10, offset = 0) => {
+//     return await db.query.tasks.findMany({
+//         where: eq(tasks.userId, userId),
+//         limit,
+//         offset
+//     });
+// };
+
+export const createTask = async (payload: CreateTaskPayload, workspaceId: number, userId: number) => {
     const dateObj = new Date(payload.deadline);
     if (isNaN(dateObj.getTime())) {
         throw new Error("Invalid deadline format");
     }
     await db.insert(tasks).values({
-        userId,
+        workspaceId,
+        createdBy: userId,
         title: payload.title,
         isCompleted: payload.isCompleted,
         deadline: dateObj,
     });
 };
 
-export const getTaskById = async (id: number, userId: number) => {
+export const getTaskById = async (id: number, workspaceId: number) => {
     const task = await db.query.tasks.findFirst({
-        where: and(eq(tasks.id, id), eq(tasks.userId, userId)),
+        where: and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)),
     });
 
     if (!task) throw new NotFoundError('Task not found');
     return task;
 };
 
-export const updateTask = async (id: number, userId: number, payload: UpdateTaskPayload) => {
+export const updateTask = async (id: number, workspaceId: number, payload: UpdateTaskPayload) => {
     const data: UpdateTaskData = {};
     // const data: any = { ...payload };
     if (payload.title !== undefined) data.title = payload.title;
@@ -58,15 +67,15 @@ export const updateTask = async (id: number, userId: number, payload: UpdateTask
 
     const result = await db.update(tasks)
         .set(data)
-        .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+        .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)))
         .returning();
 
     if (result.length === 0) throw new NotFoundError('Task not found or unauthorized');
 };
 
-export const deleteTask = async (id: number, userId: number) => {
+export const deleteTask = async (id: number, workspaceId: number) => {
     const result = await db.delete(tasks)
-        .where(and(eq(tasks.id, id), eq(tasks.userId, userId)))
+        .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)))
         .returning();
 
     if (result.length === 0) throw new NotFoundError('Task not found or unauthorized');
