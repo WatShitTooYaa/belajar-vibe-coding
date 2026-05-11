@@ -1,67 +1,86 @@
-# [Refactor]: Migrate Tasks to Workspace-based Ownership
+# [Feature]: Add Workspace Member Endpoint
 
 ## Deskripsi Tugas
-Melanjutkan implementasi fitur Workspace pada Issue sebelumnya, kita perlu melakukan refaktorisasi pada logika dan routing Task. Saat ini, Task masih dikonsepkan sebagai entitas yang terikat langsung pada User secara personal (`userId`). Kita harus mengubahnya agar Task terikat pada Workspace (`workspaceId`), sesuai dengan perubahan schema database terbaru.
+Tugas ini bertujuan untuk mengimplementasikan fitur penambahan anggota (member) baru ke dalam sebuah Workspace yang sudah ada. Penambahan dilakukan dengan menggunakan email pengguna yang sudah terdaftar di sistem. Member yang baru ditambahkan juga akan diberikan role tertentu yang akan menentukan hak akses mereka terhadap Task di dalam workspace tersebut.
 
-## 1. Refaktor Service (`src/services/tasks-service.ts`)
+## Spesifikasi API
+- **Endpoint**: `POST /api/v1/workspaces/:workspaceId/add_member`
+  *(Catatan: kita menggunakan parameter URL `:workspaceId` untuk menentukan workspace mana yang akan ditambahkan member).*
+- **Otentikasi**: Wajib (membutuhkan JWT Token).
 
-Karena struktur database tabel `tasks` telah berubah (menghapus `userId` dan menggantinya dengan `workspaceId`), kita harus memperbarui semua fungsi yang ada di dalam service.
-
-### A. Fungsi yang perlu diubah:
-1. **`getTasksByWorkspaceId`**: (Anda mungkin sudah memulai ini). Pastikan fungsi ini menerima argumen `workspaceId: number` dan melakukan query menggunakan kondisi `eq(tasks.workspaceId, workspaceId)`.
-2. **`createTask`**:
-   - Ubah parameter menjadi: `createTask(payload: CreateTaskPayload, workspaceId: number)`
-   - Pada saat `db.insert`, ubah payload dengan memasukkan `workspaceId` (bukan `userId` lagi).
-3. **`getTaskById`**:
-   - Ubah parameter menjadi: `getTaskById(id: number, workspaceId: number)`
-   - Ubah query pencarian: `where: and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId))`
-4. **`updateTask` & `deleteTask`**:
-   - Sama seperti di atas, ganti parameter `userId` menjadi `workspaceId`.
-   - Perbarui kondisi `where` di dalam kueri `update` dan `delete` Drizzle.
-
-## 2. Refaktor Routing (`src/routes/tasks-routes.ts`)
-
-Routing untuk Task tidak lagi diakses langsung secara global (misal: `/api/v1/tasks`), melainkan harus berjalan di dalam konteks sebuah Workspace, contoh URL yang diharapkan: `/api/v1/workspaces/:workspaceId/tasks`.
-
-### A. Perubahan Path & Parameter:
-- Pastikan setiap endpoint HTTP (`GET /`, `POST /`, `GET /:id`, `PATCH /:id`, `DELETE /:id`) dikonfigurasi untuk menangkap URL parameter `workspaceId`.
-- Anda bisa me-mount (menggabungkan) Elysia instance dari `tasksRoutes` ke dalam `workspacesRoutes` untuk mencapai struktur URL nested ini.
-
-### B. Otorisasi Member (Sangat Penting!):
-Sebelum endpoint mengeksekusi aksi Task apapun (melihat, membuat, menghapus), sistem **wajib** memvalidasi apakah user yang sedang login memiliki hak akses ke workspace tersebut.
-
-## 3. Tahapan Implementasi (Step-by-Step)
-
-Anggap ini sebagai checklist kerjamu:
-
-### Langkah 1: Buat Pengecekan Otorisasi Member
-Di file `src/services/workspaces-service.ts`, tambahkan satu fungsi baru untuk memeriksa keanggotaan:
-```typescript
-export const checkWorkspaceMember = async (workspaceId: number, userId: number) => {
-    // 1. Query ke tabel `workspaceMembers`
-    // 2. Cari data yang cocok dengan workspaceId dan userId
-    // 3. Return true jika ada (member), atau false jika tidak ada.
+**Request Body:**
+```json
+{
+  "email": "teman@example.com",
+  "role": "editor" // Hanya menerima "editor" atau "watcher"
 }
 ```
 
-### Langkah 2: Update Logika Bisnis Task
-Buka `src/services/tasks-service.ts`:
-- Sapu bersih semua variabel dan argumen bernama `userId` di fungsi-fungsi tersebut dan ganti menjadi `workspaceId`.
-- Pastikan tidak ada syntax error dari Drizzle ORM setelah refaktor.
+**Response Sukses (200 OK):**
+```json
+{
+   "data": "ok"
+}
+```
 
-### Langkah 3: Update Routing Task
-Buka `src/routes/tasks-routes.ts`:
-1. Ubah konfigurasi `t.Object` untuk `params` agar menerima `workspaceId: t.Numeric()`.
-2. Di dalam handler tiap endpoint (misal `post('/')`), lakukan hal berikut secara berurutan:
-   - Ambil `userId` dari token JWT.
+**Response Error (404 Not Found / 400 Bad Request):**
+```json
+{
+   "error": "User not found" // Atau pesan error relevan lainnya
+}
+```
+
+## Kebijakan Role (Role Policy)
+1. **owner**: Otomatis diberikan kepada user yang pertama kali membuat workspace (Fitur ini sudah selesai diimplementasikan sebelumnya).
+2. **editor**: User dapat melihat, membuat, mengedit, dan menghapus task di workspace ini.
+3. **watcher**: User **hanya** dapat melihat (membaca) task di workspace ini. Tidak boleh mengubah data.
+
+---
+
+## Tahapan Implementasi (Panduan untuk Developer)
+
+Ikuti langkah-langkah di bawah ini secara berurutan:
+
+### Langkah 1: Update Service Layer (`src/services/workspaces-service.ts`)
+1. Buat dan export fungsi baru bernama `addWorkspaceMember`.
+2. Fungsi ini harus menerima parameter: `workspaceId` (number), `email` (string), `role` (string), dan `addedByUserId` (number - opsional untuk validasi keamanan).
+3. **Logika Bisnis di dalam fungsi:**
+   - **Lakukan pengecekan Email**: Gunakan Drizzle ORM untuk men-query tabel `users` (pastikan Anda meng-import `users` dari `schema.ts`). Cari user berdasarkan email dari parameter.
+   - **Kondisi Tidak Ketemu**: Jika hasil query kosong, lemparkan error: `throw new Error("User not found")`.
+   - **Kondisi Ketemu**: Ambil `id` dari user yang ditemukan.
+   - *(Opsional/Best Practice)*: Cek dulu apakah user tersebut *sudah* ada di dalam tabel `workspaceMembers` untuk workspace ini. Jika sudah, tolak untuk menghindari duplikasi data.
+   - **Insert Database**: Jika aman, jalankan perintah `db.insert(workspaceMembers).values(...)` dengan memasukkan `workspaceId`, `userId` yang ditemukan, dan `role`.
+
+### Langkah 2: Buat Routing (`src/routes/workspaces-routes.ts`)
+1. Cari chain Elysia (`workspacesRoutes`) dan tambahkan endpoint baru: `.post('/:workspaceId/add_member', async ({ params, body, userId, set }) => { ... })`.
+2. Di dalam handler:
    - Ambil `workspaceId` dari params.
-   - Panggil fungsi `checkWorkspaceMember(workspaceId, userId)`.
-   - Jika hasilnya *false*, langsung `set.status = 403` dan kembalikan pesan "Forbidden: Anda bukan member workspace ini".
-   - Jika *true*, lanjutkan memanggil fungsi service task terkait (misal: `createTask(body, workspaceId)`).
+   - Ambil `email` dan `role` dari body.
+   - Panggil fungsi `addWorkspaceMember` yang sudah Anda buat di service.
+   - Tangkap error (blok `try-catch`). Jika error `User not found`, set status ke 404. Kembalikan response JSON yang sesuai.
+3. **Validasi Request**: Gunakan TypeBox Elysia untuk memvalidasi request. Tambahkan argumen ketiga di method `.post`:
+   ```typescript
+   {
+       params: t.Object({ workspaceId: t.Numeric() }),
+       body: t.Object({
+           email: t.String({ format: 'email' }),
+           role: t.Union([t.Literal('editor'), t.Literal('watcher')])
+       })
+   }
+   ```
 
-### Langkah 4: Registrasi Nested Route (Opsional namun Disarankan)
-Untuk membuat struktur URL menjadi `/api/v1/workspaces/:workspaceId/tasks`, pertimbangkan untuk me-register (menggunakan `.use()`) routing `tasksRoutes` di dalam file `workspaces-routes.ts`, lalu hapus registrasi independennya dari `index.ts`.
+### Langkah 3: Update Otorisasi Task (Tugas Lanjutan - Opsional di Issue Ini)
+Sebagai kelanjutan dari sistem role ini, nanti Anda perlu membuka `src/routes/tasks-routes.ts` dan mengubah logika middleware otorisasi. 
+Saat ini middleware tersebut hanya mengecek "Apakah user ini member?". Ke depannya, harus diubah menjadi:
+- Untuk method `GET`: Role apa saja (`owner`, `editor`, `watcher`) boleh masuk.
+- Untuk method `POST`, `PATCH`, `DELETE`: Hanya `owner` dan `editor` yang boleh lewat. Jika `watcher` mencoba, kembalikan error `403 Forbidden`.
+
+### Langkah 4: Modifikasi Response Pengambilan Task (Tampilkan Username)
+Buka file `src/services/tasks-service.ts` dan cari fungsi yang bertugas mengambil list task (misal `getTasksByWorkspaceId` dan `getTaskById`).
+Saat ini, field `createdBy` pada task mengembalikan tipe data `number` (yaitu `user_id`). Anda harus mengubah ini agar API mengembalikan **username** pembuatnya.
+1. Lakukan modifikasi kueri Drizzle ORM Anda. Anda bisa menggunakan metode `.leftJoin()` atau `.innerJoin()` dengan tabel `users` untuk mengambil kolom `username`.
+2. Format ulang hasil kueri sebelum dikembalikan (return) oleh fungsi, sehingga properti `createdBy` berisi string `username` (misalnya: `createdBy: "Budi"`), bukan ID angka.
 
 ---
 **Catatan Senior:**
-Perhatikan baik-baik *Langkah 3b*. Jangan pernah membiarkan fungsi Task berjalan tanpa mengecek apakah user tersebut berhak mengakses Workspace itu. Keamanan data pengguna adalah prioritas! Baca dokumentasi Drizzle ORM jika ada error tipe data saat refaktor `where`. Semangat!
+Perhatikan baik-baik saat melakukan query ke tabel `users` dari dalam service `workspaces` dan `tasks`. Pastikan tabel tersebut di-import dengan benar dari skema database. Jangan ragu untuk melihat dokumentasi Drizzle ORM tentang operasi `JOIN` atau *Relational Queries* untuk menyelesaikan Langkah 4!
