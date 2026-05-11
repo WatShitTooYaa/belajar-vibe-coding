@@ -1,7 +1,7 @@
 import { Elysia, NotFoundError, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { getTasksByWorkspaceId, createTask, getTaskById, updateTask, deleteTask } from '../services/tasks-service';
-import { checkWorkspaceMember } from '../services/workspaces-service';
+import { getWorkspaceMember } from '../services/workspaces-service';
 
 const secret = process.env.JWT_SECRET;
 if (!secret) throw new Error('JWT_SECRET is not set');
@@ -32,15 +32,16 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
         const workspaceId = Number((params as any).workspaceId);
 
         // Authorization Check
-        const isMember = await checkWorkspaceMember(workspaceId, userId);
-        if (!isMember) {
+        const member = await getWorkspaceMember(workspaceId, userId);
+        if (!member) {
             set.status = 403;
             throw new Error('Forbidden: Anda bukan member workspace ini');
         }
 
         return {
             userId,
-            workspaceId
+            workspaceId,
+            role: member.role
         };
     })
     .get('', async ({ workspaceId, set }) => {
@@ -52,7 +53,11 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
             return { error: error.message || "Internal Server Error" };
         }
     })
-    .post('', async ({ body, workspaceId, userId, set }) => {
+    .post('', async ({ body, workspaceId, userId, role, set }) => {
+        if (role === 'watcher') {
+            set.status = 403;
+            return { error: "Forbidden: Watcher cannot create tasks" };
+        }
         try {
             await createTask(body, workspaceId, userId);
             return { data: 'ok' };
@@ -81,7 +86,11 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
             return { error: "Internal Server Error" };
         }
     })
-    .patch('/:id', async ({ params, body, workspaceId, set }) => {
+    .patch('/:id', async ({ params, body, workspaceId, role, set }) => {
+        if (role === 'watcher') {
+            set.status = 403;
+            return { error: "Forbidden: Watcher cannot update tasks" };
+        }
         try {
             const id = Number((params as any).id);
             if (Object.keys(body).length === 0) {
@@ -104,7 +113,11 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
             deadline: t.Optional(t.String({ format: 'date-time' }))
         })
     })
-    .delete('/:id', async ({ params, workspaceId, set }) => {
+    .delete('/:id', async ({ params, workspaceId, role, set }) => {
+        if (role === 'watcher') {
+            set.status = 403;
+            return { error: "Forbidden: Watcher cannot delete tasks" };
+        }
         try {
             const id = Number((params as any).id);
             await deleteTask(id, workspaceId);

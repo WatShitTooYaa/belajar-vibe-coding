@@ -1,6 +1,6 @@
 import { NotFoundError } from 'elysia';
 import { db } from '../db';
-import { tasks } from '../db/schema';
+import { tasks, users } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 
 interface CreateTaskPayload {
@@ -14,20 +14,24 @@ type UpdateTaskData = Partial<typeof tasks.$inferInsert>;
 
 
 export const getTasksByWorkspaceId = async (workspaceId: number, limit = 10, offset = 0) => {
-    return await db.query.tasks.findMany({
-        where: eq(tasks.workspaceId, workspaceId),
-        limit,
-        offset
-    });
+    const results = await db.select({
+        id: tasks.id,
+        workspaceId: tasks.workspaceId,
+        createdBy: users.username, // Returning username instead of ID
+        title: tasks.title,
+        isCompleted: tasks.isCompleted,
+        deadline: tasks.deadline,
+        createdAt: tasks.createdAt
+    })
+    .from(tasks)
+    .innerJoin(users, eq(tasks.createdBy, users.id))
+    .where(eq(tasks.workspaceId, workspaceId))
+    .limit(limit)
+    .offset(offset);
+
+    return results;
 };
 
-// export const getTasksByUserId = async (userId: number, limit = 10, offset = 0) => {
-//     return await db.query.tasks.findMany({
-//         where: eq(tasks.userId, userId),
-//         limit,
-//         offset
-//     });
-// };
 
 export const createTask = async (payload: CreateTaskPayload, workspaceId: number, userId: number) => {
     const dateObj = new Date(payload.deadline);
@@ -44,9 +48,18 @@ export const createTask = async (payload: CreateTaskPayload, workspaceId: number
 };
 
 export const getTaskById = async (id: number, workspaceId: number) => {
-    const task = await db.query.tasks.findFirst({
-        where: and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)),
-    });
+    const [task] = await db.select({
+        id: tasks.id,
+        workspaceId: tasks.workspaceId,
+        createdBy: users.username, // Returning username instead of ID
+        title: tasks.title,
+        isCompleted: tasks.isCompleted,
+        deadline: tasks.deadline,
+        createdAt: tasks.createdAt
+    })
+    .from(tasks)
+    .innerJoin(users, eq(tasks.createdBy, users.id))
+    .where(and(eq(tasks.id, id), eq(tasks.workspaceId, workspaceId)));
 
     if (!task) throw new NotFoundError('Task not found');
     return task;
@@ -54,7 +67,6 @@ export const getTaskById = async (id: number, workspaceId: number) => {
 
 export const updateTask = async (id: number, workspaceId: number, payload: UpdateTaskPayload) => {
     const data: UpdateTaskData = {};
-    // const data: any = { ...payload };
     if (payload.title !== undefined) data.title = payload.title;
     if (payload.isCompleted !== undefined) data.isCompleted = payload.isCompleted;
     if (payload.deadline !== undefined) {

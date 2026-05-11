@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
-import { createWorkspace, getWorkspacesByUserId } from '../services/workspaces-service';
+import { createWorkspace, getWorkspacesByUserId, addWorkspaceMember, getWorkspaceMembers } from '../services/workspaces-service';
 import { tasksRoutes } from './tasks-routes';
 
 const secret = process.env.JWT_SECRET;
@@ -32,6 +32,7 @@ export const workspacesRoutes = new Elysia({ prefix: '/api/v1/workspaces' })
             userId: Number(payload.sub),
         };
     })
+    // get all workspaces
     .get('', async ({ userId, set }) => {
         try {
             const data = await getWorkspacesByUserId(userId);
@@ -41,6 +42,7 @@ export const workspacesRoutes = new Elysia({ prefix: '/api/v1/workspaces' })
             return { error: error.message };
         }
     })
+    // create workspace
     .post('', async ({ body, userId, set }) => {
         try {
             const data = await createWorkspace(body.name, userId);
@@ -52,6 +54,45 @@ export const workspacesRoutes = new Elysia({ prefix: '/api/v1/workspaces' })
     }, {
         body: t.Object({
             name: t.String({ minLength: 1, maxLength: 50 }),
+        })
+    })
+    // add member
+    .post('/:workspaceId/members', async ({ params: { workspaceId }, body, set }) => {
+        try {
+            const data = await addWorkspaceMember(workspaceId, body.email, body.role);
+            return { data };
+        } catch (error: any) {
+            if (error.message === "User not found") {
+                set.status = 404;
+            } else {
+                set.status = 400;
+            }
+            return { error: error.message };
+        }
+    }, {
+        params: t.Object({
+            workspaceId: t.Numeric()
+        }),
+        body: t.Object({
+            email: t.String({ format: 'email' }),
+            role: t.Union([t.Literal('editor'), t.Literal('watcher')])
+        })
+    })
+    .get('/:workspaceId/members', async ({ params: { workspaceId }, set }) => {
+        try {
+            const data = await getWorkspaceMembers(workspaceId);
+            return { data };
+        } catch (error: any) {
+            if (error.message === "Workspace not found") {
+                set.status = 404;
+            } else {
+                set.status = 400;
+            }
+            return { error: error.message };
+        }
+    }, {
+        params: t.Object({
+            workspaceId: t.Numeric()
         })
     })
     .use(tasksRoutes);
