@@ -83,14 +83,14 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
 
             if (!refreshToken) {
                 set.status = 401;
-                throw new Error('Unauthorized');
+                return { error: 'Unauthorized' };
             }
 
             const refreshTokenDB = await findRefreshToken(refreshToken);
 
             if (!refreshTokenDB) {
                 set.status = 401;
-                throw new Error('Unauthorized');
+                return { error: 'Unauthorized' };
             }
 
             const accessToken = await jwt.sign({

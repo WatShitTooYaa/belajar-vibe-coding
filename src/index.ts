@@ -35,8 +35,23 @@ export const app = new Elysia()
     )
     .onError(({ code, error, set }) => {
         console.error(`[Error] ${code}: ${error}`);
-        if (code === 'NOT_FOUND') return { error: 'Not Found' };
-        if (code === 'VALIDATION') return { error: 'Bad Request' };
+        if (code === 'NOT_FOUND') {
+            set.status = 404;
+            return { error: 'Not Found' };
+        }
+        if (code === 'VALIDATION') {
+            set.status = 400;
+            return { error: 'Bad Request' };
+        }
+
+        const currentStatus = Number(set.status ?? 500);
+        if (currentStatus === 401) return { error: 'Unauthorized' };
+        if (currentStatus === 403) return { error: 'Forbidden' };
+        if (currentStatus === 404) return { error: 'Not Found' };
+        if (currentStatus >= 400 && currentStatus < 500) {
+            return { error: 'Bad Request' };
+        }
+
         set.status = 500;
         return { error: 'Internal Server Error' };
     })

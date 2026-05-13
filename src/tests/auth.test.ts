@@ -65,7 +65,7 @@ describe('AUTH API - PRODUCTION GRADE', () => {
                 })
             }));
 
-            expect(res.status).toBe(422);
+            expect(res.status).toBe(400);
         });
 
         it('VAL-03 should fail short password', async () => {
@@ -79,7 +79,7 @@ describe('AUTH API - PRODUCTION GRADE', () => {
                 })
             }));
 
-            expect(res.status).toBe(422);
+            expect(res.status).toBe(400);
         });
 
         it('SEC-01 should fail missing fields', async () => {
@@ -127,7 +127,7 @@ describe('AUTH API - PRODUCTION GRADE', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     email: testUser.email,
-                    password: 'wrong'
+                    password: 'wrongpassword'
                 })
             }));
 
