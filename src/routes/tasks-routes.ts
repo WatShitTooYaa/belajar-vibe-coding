@@ -2,15 +2,13 @@ import { Elysia, NotFoundError, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { getTasksByWorkspaceId, createTask, getTaskById, updateTask, deleteTask } from '../services/tasks-service';
 import { getWorkspaceMember } from '../services/workspaces-service';
-
-const secret = process.env.JWT_SECRET;
-if (!secret) throw new Error('JWT_SECRET is not set');
+import { env } from '../config/env';
 
 export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
     .use(
         jwt({
             name: 'jwt',
-            secret: secret,
+            secret: env.jwtSecret,
         })
     )
     .derive(async ({ cookie: { access_token }, jwt, set, params }) => {
@@ -36,7 +34,7 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
 
         if (!member) {
             set.status = 403;
-            throw new Error('Forbidden: Anda bukan member workspace ini');
+            throw new Error('Unauthorized');
         }
 
         return {
@@ -45,31 +43,33 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
             role: member.role
         };
     })
+
     .get('', async ({ workspaceId, set }) => {
         try {
             const data = await getTasksByWorkspaceId(workspaceId);
-            console.log("data tasks : ", data)
             return { data };
         } catch (error: any) {
+            console.error(error);
             set.status = 500;
-            return { error: error.message || "Internal Server Error" };
+            return { error: 'Internal Server Error' };
         }
     })
     .post('', async ({ body, workspaceId, userId, role, set }) => {
         if (role === 'watcher') {
-            set.status = 401;
-            return { error: "Unauthorized: Watcher cannot create tasks" };
+            set.status = 403;
+            return { error: 'Forbidden' };
         }
         try {
             await createTask(body, workspaceId, userId);
             return { data: 'ok' };
         } catch (error: any) {
+            console.error(error);
             set.status = 500;
-            return { error: error.message };
+            return { error: 'Internal Server Error' };
         }
     }, {
         body: t.Object({
-            title: t.String(),
+            title: t.String({ minLength: 1, maxLength: 100 }),
             isCompleted: t.Boolean(),
             deadline: t.String({ format: 'date-time' })
         })
@@ -91,7 +91,7 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
     .patch('/:id', async ({ params, body, workspaceId, role, set }) => {
         if (role === 'watcher') {
             set.status = 403;
-            return { error: "Forbidden: Watcher cannot update tasks" };
+            return { error: "Forbidden" };
         }
         try {
             const id = Number((params as any).id);

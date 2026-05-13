@@ -4,6 +4,7 @@ import { jwt } from '@elysiajs/jwt';
 import { userRoutes } from './routes/user-routes';
 import { workspacesRoutes } from './routes/workspaces-routes';
 import { tasksRoutes } from './routes/tasks-routes';
+import { env } from './config/env';
 import logixlysia from 'logixlysia';
 
 export const app = new Elysia()
@@ -22,15 +23,22 @@ export const app = new Elysia()
             ip: true
         }
     }))
-    .use(cors())
+    .use(cors({
+        origin: env.frontendOrigin,
+        credentials: true,
+    }))
     .use(
         jwt({
             name: 'jwt',
-            secret: process.env.JWT_SECRET || 'secret',
+            secret: env.jwtSecret,
         })
     )
-    .onError(({ code, error }) => {
+    .onError(({ code, error, set }) => {
         console.error(`[Error] ${code}: ${error}`);
+        if (code === 'NOT_FOUND') return { error: 'Not Found' };
+        if (code === 'VALIDATION') return { error: 'Bad Request' };
+        set.status = 500;
+        return { error: 'Internal Server Error' };
     })
     .get('/', () => 'Server is running!')
     .use(userRoutes)

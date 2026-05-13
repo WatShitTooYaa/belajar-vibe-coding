@@ -2,6 +2,8 @@
 import { db } from '../db';
 import { users, refreshTokens } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { hashToken } from '../utils/token';
+
 interface RegisterPayload {
     email: string;
     username: string;
@@ -60,16 +62,19 @@ export const createRefreshToken = async (userId: number, token: string) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 hari
 
+    const tokenHash = await hashToken(token);
+
     await db.insert(refreshTokens).values({
         userId,
-        token,
+        token: tokenHash,
         expiresAt,
     });
 };
 
 export const findRefreshToken = async (token: string) => {
+    const tokenHash = await hashToken(token);
     const result = await db.query.refreshTokens.findFirst({
-        where: eq(refreshTokens.token, token),
+        where: eq(refreshTokens.token, tokenHash),
     });
 
     if (!result) return null;
@@ -82,7 +87,8 @@ export const findRefreshToken = async (token: string) => {
 };
 
 export const deleteRefreshToken = async (token: string) => {
-    await db.delete(refreshTokens).where(eq(refreshTokens.token, token));
+    const tokenHash = await hashToken(token);
+    await db.delete(refreshTokens).where(eq(refreshTokens.token, tokenHash));
 };
 
 export const getCurrentUser = async (userId: number) => {

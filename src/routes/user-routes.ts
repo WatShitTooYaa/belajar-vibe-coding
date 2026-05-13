@@ -1,12 +1,14 @@
 import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { registerUser, loginUser, createRefreshToken, findRefreshToken, deleteRefreshToken, getCurrentUser } from '../services/user-service';
+import { env } from '../config/env';
+import { authCookieOptions, sessionIndicatorCookieOptions } from '../utils/cookies';
 
 export const userRoutes = new Elysia({ prefix: '/api/auth' })
     .use(
         jwt({
             name: 'jwt',
-            secret: process.env.JWT_SECRET || 'secret',
+            secret: env.jwtSecret,
         })
     )
     .post('/register', async ({ body, set }) => {
@@ -14,8 +16,13 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
             await registerUser(body);
             return { data: 'ok' };
         } catch (error: any) {
-            set.status = 400;
-            return { error: error.message };
+            if (error.message === 'Email or username already exists') {
+                set.status = 400;
+                return { error: error.message };
+            }
+            console.error(error);
+            set.status = 500;
+            return { error: 'Internal Server Error' };
         }
     }, {
         body: t.Object({
@@ -38,31 +45,30 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
 
             cookie.access_token?.set({
                 value: accessToken,
-                httpOnly: true,
                 maxAge: 900,
-                path: '/',
-                sameSite: 'strict'
+                ...authCookieOptions
             });
             cookie.refresh_token?.set({
                 value: refreshToken,
-                httpOnly: true,
-                maxAge: 604800, // 7 hari
-                path: '/',
-                sameSite: 'strict'
+                maxAge: 604800,
+                ...authCookieOptions
             });
 
             cookie.has_session?.set({
                 value: 1,
-                httpOnly: false,
                 maxAge: 604800,
-                path: '/',
-                sameSite: 'strict'
+                ...sessionIndicatorCookieOptions
             });
 
             return { data: { user } };
         } catch (error: any) {
-            set.status = error.message === 'Invalid email or password' ? 401 : 500;
-            return { error: error.message };
+            if (error.message === 'Invalid email or password') {
+                set.status = 401;
+                return { error: error.message };
+            }
+            console.error(error);
+            set.status = 500;
+            return { error: 'Internal Server Error' };
         }
     }, {
         body: t.Object({
@@ -72,48 +78,57 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
     })
     // Route yang tidak butuh access_token tapi butuh refresh_token
     .post('/refresh', async ({ cookie, jwt, set }) => {
-        const refreshToken = cookie.refresh_token?.value as string | null;
+        try {
+            const refreshToken = cookie.refresh_token?.value as string | null;
 
-        if (!refreshToken) {
-            set.status = 401;
-            throw new Error('Unauthorized');
+            if (!refreshToken) {
+                set.status = 401;
+                throw new Error('Unauthorized');
+            }
+
+            const refreshTokenDB = await findRefreshToken(refreshToken);
+
+            if (!refreshTokenDB) {
+                set.status = 401;
+                throw new Error('Unauthorized');
+            }
+
+            const accessToken = await jwt.sign({
+                sub: refreshTokenDB.userId.toString(),
+            });
+
+            cookie.access_token?.set({
+                value: accessToken,
+                maxAge: 60 * 15,
+                ...authCookieOptions
+            });
+
+            const currentUser = await getCurrentUser(refreshTokenDB.userId);
+            return { data: { user: currentUser } };
+        } catch (error: any) {
+            console.error(error);
+            set.status = 500;
+            return { error: 'Internal Server Error' };
         }
-
-        const refreshTokenDB = await findRefreshToken(refreshToken);
-
-        if (!refreshTokenDB) {
-            set.status = 401;
-            throw new Error('Unauthorized');
-        }
-
-        const accessToken = await jwt.sign({
-            sub: refreshTokenDB.userId.toString(),
-        });
-
-        cookie.access_token?.set({
-            value: accessToken,
-            httpOnly: true,
-            maxAge: 60 * 15,
-            secure: process.env.NODE_ENV === 'production',
-            path: '/',
-            sameSite: 'strict'
-        });
-
-        const currentUser = await getCurrentUser(refreshTokenDB.userId);
-        return { data: { user: currentUser } };
     })
     // Logout diletakkan di luar guard agar tetap bisa logout meski access_token expired
-    .delete('/logout', async ({ cookie }) => {
-        const refreshToken = cookie.refresh_token?.value as string || null;
-        if (refreshToken) {
-            await deleteRefreshToken(refreshToken);
+    .delete('/logout', async ({ cookie, set }) => {
+        try {
+            const refreshToken = cookie.refresh_token?.value as string || null;
+            if (refreshToken) {
+                await deleteRefreshToken(refreshToken);
+            }
+
+            cookie.access_token?.remove();
+            cookie.refresh_token?.remove();
+            cookie.has_session?.remove();
+
+            return { data: 'ok' };
+        } catch (error: any) {
+            console.error(error);
+            set.status = 500;
+            return { error: 'Internal Server Error' };
         }
-
-        cookie.access_token?.remove();
-        cookie.refresh_token?.remove();
-        cookie.has_session?.remove();
-
-        return { data: 'ok' };
     })
     // Mengelompokkan route yang butuh otentikasi access_token (Protected Routes)
     .guard({}, (app) => app
