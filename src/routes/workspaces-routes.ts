@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
-import { createWorkspace, getWorkspacesByUserId, addWorkspaceMember, getWorkspaceMembers } from '../services/workspaces-service';
+import { createWorkspace, getWorkspacesByUserId, addWorkspaceMember, getWorkspaceMembers, getWorkspacesByMemberId } from '../services/workspaces-service';
 import { tasksRoutes } from './tasks-routes';
 
 const secret = process.env.JWT_SECRET;
@@ -35,7 +35,7 @@ export const workspacesRoutes = new Elysia({ prefix: '/api/v1/workspaces' })
     // get all workspaces
     .get('', async ({ userId, set }) => {
         try {
-            const data = await getWorkspacesByUserId(userId);
+            const data = await getWorkspacesByMemberId(userId);
             return { data };
         } catch (error: any) {
             set.status = 500;

@@ -33,6 +33,7 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
 
         // Authorization Check
         const member = await getWorkspaceMember(workspaceId, userId);
+
         if (!member) {
             set.status = 403;
             throw new Error('Forbidden: Anda bukan member workspace ini');
@@ -47,6 +48,7 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
     .get('', async ({ workspaceId, set }) => {
         try {
             const data = await getTasksByWorkspaceId(workspaceId);
+            console.log("data tasks : ", data)
             return { data };
         } catch (error: any) {
             set.status = 500;
@@ -55,8 +57,8 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
     })
     .post('', async ({ body, workspaceId, userId, role, set }) => {
         if (role === 'watcher') {
-            set.status = 403;
-            return { error: "Forbidden: Watcher cannot create tasks" };
+            set.status = 401;
+            return { error: "Unauthorized: Watcher cannot create tasks" };
         }
         try {
             await createTask(body, workspaceId, userId);

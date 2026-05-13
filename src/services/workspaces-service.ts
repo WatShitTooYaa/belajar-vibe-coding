@@ -71,6 +71,24 @@ export const getWorkspacesByUserId = async (userId: number, limit = 10, offset =
     return results;
 };
 
+export const getWorkspacesByMemberId = async (userId: number, limit = 10, offset = 0) => {
+    const data = await db
+        .select({
+            id: workspaces.id,
+            name: workspaces.name,
+            createdAt: workspaces.createdAt,
+        })
+        .from(workspaceMembers)
+        .innerJoin(
+            workspaces,
+            eq(workspaceMembers.workspaceId, workspaces.id)
+        )
+        .limit(limit)
+        .offset(offset)
+        .where(eq(workspaceMembers.userId, userId));
+    return data
+};
+
 export const createWorkspace = async (name: string, userId: number) => {
     try {
         return await db.transaction(async (tx) => {
