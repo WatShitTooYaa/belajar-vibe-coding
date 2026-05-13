@@ -51,6 +51,14 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
                 sameSite: 'strict'
             });
 
+            cookie.has_session?.set({
+                value: 1,
+                httpOnly: false,
+                maxAge: 604800,
+                path: '/',
+                sameSite: 'strict'
+            });
+
             return { data: { user } };
         } catch (error: any) {
             set.status = error.message === 'Invalid email or password' ? 401 : 500;
@@ -103,6 +111,7 @@ export const userRoutes = new Elysia({ prefix: '/api/auth' })
 
         cookie.access_token?.remove();
         cookie.refresh_token?.remove();
+        cookie.has_session?.remove();
 
         return { data: 'ok' };
     })
