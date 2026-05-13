@@ -34,7 +34,7 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
 
         if (!member) {
             set.status = 403;
-            throw new Error('Unauthorized');
+            throw new Error('Forbidden');
         }
 
         return {
@@ -118,7 +118,7 @@ export const tasksRoutes = new Elysia({ prefix: '/:workspaceId/tasks' })
     .delete('/:id', async ({ params, workspaceId, role, set }) => {
         if (role === 'watcher') {
             set.status = 403;
-            return { error: "Forbidden: Watcher cannot delete tasks" };
+            return { error: "Forbidden" };
         }
         try {
             const id = Number((params as any).id);
